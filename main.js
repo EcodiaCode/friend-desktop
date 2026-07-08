@@ -13,7 +13,13 @@ const path = require('node:path');
 const fs = require('node:fs');
 const claudeScan = require('./claude-scan');
 
-const FRIEND_URL = (process.env.FRIEND_URL ?? 'https://friend.ecodia.au').replace(/\/$/, '');
+// The origin is what counts as "inside the app" for the external-link handler; the start
+// path is what we actually load. We open /chat, which the Friend middleware redirects to
+// /login when signed out (so a fresh install lands straight on the login form, never the
+// public download page that would loop) and shows the app when signed in.
+const FRIEND_ORIGIN = (process.env.FRIEND_URL ?? 'https://friend.ecodia.au').replace(/\/$/, '');
+const START_PATH = process.env.FRIEND_START_PATH ?? '/chat';
+const FRIEND_START = FRIEND_ORIGIN + START_PATH;
 const SHOT = process.env.SHOT === '1';
 
 // The local knowledge scanner: the renderer (the hosted Friend app) can ask the machine to
@@ -73,16 +79,17 @@ async function createWindow() {
   });
   mainWindow = win;
 
-  // Open real external links (not app navigations) in the system browser.
+  // Open real external links (not app navigations) in the system browser. Anything on the
+  // Friend origin (login, chat, download, oauth) stays in the window.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (!url.startsWith(FRIEND_URL)) {
+    if (!url.startsWith(FRIEND_ORIGIN)) {
       void shell.openExternal(url);
       return { action: 'deny' };
     }
     return { action: 'allow' };
   });
 
-  await win.loadURL(FRIEND_URL);
+  await win.loadURL(FRIEND_START);
   return win;
 }
 

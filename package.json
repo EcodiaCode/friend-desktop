@@ -17,7 +17,9 @@
     "appId": "au.ecodia.friend",
     "productName": "Friend",
     "files": [
-      "main.js"
+      "main.js",
+      "preload.js",
+      "claude-scan.js"
     ],
     "extraResources": [
       {

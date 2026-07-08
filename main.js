@@ -8,12 +8,35 @@
 // SHOT=1 loads the window hidden, captures the rendered page to a file, and quits, so the
 // app can be boot-verified without stealing the user's screen focus.
 
-const { app, BrowserWindow, shell, session } = require('electron');
+const { app, BrowserWindow, shell, session, ipcMain } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
+const claudeScan = require('./claude-scan');
 
 const FRIEND_URL = (process.env.FRIEND_URL ?? 'https://friend.ecodia.au').replace(/\/$/, '');
 const SHOT = process.env.SHOT === '1';
+
+// The local knowledge scanner: the renderer (the hosted Friend app) can ask the machine to
+// find its Claude Code / AI artifacts and read a chosen subset into transcripts. Both
+// handlers are read-only and the scanner re-validates every path against the allowed roots.
+// Registered once, when the app is ready (ipcMain is only guaranteed live after that).
+function registerScanBridge() {
+  ipcMain.handle('friend:scan', async () => {
+    try {
+      return { ok: true, ...claudeScan.scan() };
+    } catch (e) {
+      return { ok: false, error: (e && e.message) || 'scan failed' };
+    }
+  });
+  ipcMain.handle('friend:read-sessions', async (_evt, items) => {
+    try {
+      const sessions = claudeScan.readSessions(Array.isArray(items) ? items : []);
+      return { ok: true, sessions };
+    } catch (e) {
+      return { ok: false, error: (e && e.message) || 'read failed' };
+    }
+  });
+}
 
 function iconPath() {
   const p = path.join(__dirname, 'build', 'icon.png');
@@ -44,6 +67,8 @@ async function createWindow() {
       partition: undefined,
       contextIsolation: true,
       nodeIntegration: false,
+      // The only bridge to the machine: exposes window.friendDesktop (scan/read only).
+      preload: path.join(__dirname, 'preload.js'),
     },
   });
   mainWindow = win;
@@ -62,6 +87,8 @@ async function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  registerScanBridge();
+
   // Dock icon (mac; the packaged .app uses its .icns bundle icon).
   if (process.platform === 'darwin' && app.dock) {
     const i = iconPath();
